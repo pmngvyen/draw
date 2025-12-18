@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Drawing App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+        #toolbar {
+            position: fixed;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+        .tool-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .tool-btn:hover {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+        .tool-btn.active {
+            background: #e3f2fd;
+            border-color: #2196F3;
+        }
+        .tool-btn svg {
+            width: 22px;
+            height: 22px;
+            stroke: #333;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .separator {
+            height: 1px;
+            background: #ddd;
+            margin: 2px 0;
+        }
+        #canvas {
+            display: block;
+            cursor: crosshair;
+            background: white;
+        }
+        
+        .popup-menu {
+            position: fixed;
+            left: 80px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            flex-direction: column;
+            gap: 15px;
+            z-index: 11;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s ease;
+        }
+        .popup-menu.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #penPopup {
+            display: flex;
+        }
+        #highlighterPopup {
+            display: flex;
+        }
+        .popup-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .popup-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 35px);
+            gap: 8px;
+        }
+        .color-btn {
+            width: 35px;
+            height: 35px;
+            border: 3px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+        .color-btn.active {
+            border-color: #333;
+            border-width: 3px;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
+        }
+        .color-picker-btn {
+            background: linear-gradient(135deg, 
+                red 0%, red 14.28%, 
+                orange 14.28%, orange 28.56%, 
+                yellow 28.56%, yellow 42.84%, 
+                green 42.84%, green 57.12%, 
+                blue 57.12%, blue 71.4%, 
+                indigo 71.4%, indigo 85.68%, 
+                violet 85.68%, violet 100%);
+        }
+        .color-picker-btn::after {
+            content: '+';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 3px rgba(0,0,0,0.8);
+        }
+        input[type="color"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .size-control {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        input[type="range"] {
+            width: 140px;
+        }
+        .size-display {
+            font-size: 14px;
+            color: #333;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <button class="tool-btn active" id="penBtn" title="Pen (click twice for settings)">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                <path d="M2 2l7.586 7.586"/>
+            </svg>
+        </button>
+        <button class="tool-btn" id="highlighterBtn" title="Highlighter (click twice for settings)">
+            <svg viewBox="0 0 24 24">
+                <path d="M4 20 L8 8 L16 8 L20 20 Z" style="fill: none;"/>
+                <rect x="6" y="18" width="12" height="4" style="fill: none;"/>
+                <line x1="8" y1="8" x2="16" y2="8"/>
+            </svg>
+        </button>
+        <button class="tool-btn" id="eraserBtn" title="Eraser (drag to erase strokes)">
+            <svg viewBox="0 0 24 24">
+                <path d="M16 4 L20 8 L8 20 L4 16 Z"/>
+                <line x1="10" y1="6" x2="18" y2="14"/>
+            </svg>
+        </button>
+        <div class="separator"></div>
+        <button class="tool-btn" id="undoBtn" title="Undo">
+            <svg viewBox="0 0 24 24">
+                <path d="M9 14L4 9l5-5"/>
+                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+            </svg>
+        </button>
+        <button class="tool-btn" id="redoBtn" title="Redo">
+            <svg viewBox="0 0 24 24">
+                <path d="M15 14l5-5-5-5"/>
+                <path d="M4 20v-7a4 4 0 0 1 4-4h12"/>
+            </svg>
+        </button>
+        <button class="tool-btn" id="clearBtn" title="Clear All">
+            <svg viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+        </button>
+    </div>
+
+    <div id="penPopup" class="popup-menu">
+        <div class="popup-section">
+            <div class="popup-title">Color</div>
+            <div class="color-grid">
+                <div class="color-btn active" style="background: black;" data-color="black" data-menu="pen"></div>
+                <div class="color-btn" style="background: #666;" data-color="#666" data-menu="pen"></div>
+                <div class="color-btn" style="background: red;" data-color="red" data-menu="pen"></div>
+                <div class="color-btn" style="background: #ff69b4;" data-color="#ff69b4" data-menu="pen"></div>
+                <div class="color-btn" style="background: blue;" data-color="blue" data-menu="pen"></div>
+                <div class="color-btn" style="background: #00bfff;" data-color="#00bfff" data-menu="pen"></div>
+                <div class="color-btn" style="background: green;" data-color="green" data-menu="pen"></div>
+                <div class="color-btn" style="background: #90ee90;" data-color="#90ee90" data-menu="pen"></div>
+                <div class="color-btn" style="background: yellow;" data-color="yellow" data-menu="pen"></div>
+                <div class="color-btn" style="background: orange;" data-color="orange" data-menu="pen"></div>
+                <div class="color-btn" style="background: purple;" data-color="purple" data-menu="pen"></div>
+                <div class="color-btn color-picker-btn" data-menu="pen" id="penColorPicker"></div>
+            </div>
+            <input type="color" id="penColorInput" value="#000000">
+        </div>
+        
+        <div class="popup-section">
+            <div class="popup-title">Brush Size</div>
+            <div class="size-control">
+                <input type="range" id="penSizeSlider" min="1" max="50" value="3">
+                <div class="size-display"><span id="penSizeValue">3</span>px</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="highlighterPopup" class="popup-menu">
+        <div class="popup-section">
+            <div class="popup-title">Color</div>
+            <div class="color-grid">
+                <div class="color-btn active" style="background: yellow;" data-color="yellow" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: #ffeb3b;" data-color="#ffeb3b" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: #90ee90;" data-color="#90ee90" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: #00bfff;" data-color="#00bfff" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: #ff69b4;" data-color="#ff69b4" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: orange;" data-color="orange" data-menu="highlighter"></div>
+                <div class="color-btn" style="background: purple;" data-color="purple" data-menu="highlighter"></div>
+                <div class="color-btn color-picker-btn" data-menu="highlighter" id="highlighterColorPicker"></div>
+            </div>
+            <input type="color" id="highlighterColorInput" value="#ffff00">
+        </div>
+        
+        <div class="popup-section">
+            <div class="popup-title">Thickness</div>
+            <div class="size-control">
+                <input type="range" id="highlighterSizeSlider" min="10" max="80" value="30">
+                <div class="size-display"><span id="highlighterSizeValue">30</span>px</div>
+            </div>
+        </div>
+
+        <div class="popup-section">
+            <div class="popup-title">Opacity</div>
+            <div class="size-control">
+                <input type="range" id="highlighterOpacitySlider" min="10" max="100" value="30">
+                <div class="size-display"><span id="highlighterOpacityValue">30</span>%</div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        let drawing = false;
+        let currentTool = 'pen';
+        let penColor = 'black';
+        let penSize = 3;
+        let highlighterColor = 'yellow';
+        let highlighterSize = 30;
+        let highlighterOpacity = 0.3;
+        let currentStroke = [];
+        let strokes = [];
+        let redoStack = [];
+        let lastPenClick = 0;
+        let lastHighlighterClick = 0;
+        
+        window.addEventListener('resize', () => {
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.putImageData(imgData, 0, 0);
+        });
+        
+        function isPointInStroke(x, y, stroke) {
+            for (let i = 0; i < stroke.points.length; i++) {
+                const p = stroke.points[i];
+                const distance = Math.sqrt((x - p.x) ** 2 + (y - p.y) ** 2);
+                const threshold = stroke.tool === 'highlighter' ? stroke.size : stroke.size + 5;
+                if (distance < threshold) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function startDrawing(e) {
+            drawing = true;
+            
+            if (currentTool === 'eraser') {
+                const pos = getMousePos(e);
+                for (let i = strokes.length - 1; i >= 0; i--) {
+                    if (isPointInStroke(pos.x, pos.y, strokes[i])) {
+                        redoStack = [];
+                        strokes.splice(i, 1);
+                        redrawCanvas();
+                        break;
+                    }
+                }
+                return;
+            }
+            
+            currentStroke = {
+                tool: currentTool,
+                color: currentTool === 'pen' ? penColor : highlighterColor,
+                size: currentTool === 'pen' ? penSize : highlighterSize,
+                opacity: currentTool === 'highlighter' ? highlighterOpacity : 1,
+                points: []
+            };
+            const pos = getMousePos(e);
+            currentStroke.points.push(pos);
+        }
+        
+        function draw(e) {
+            if (!drawing) return;
+            
+            const pos = getMousePos(e);
+            
+            if (currentTool === 'eraser') {
+                // Check multiple strokes per frame for faster erasing
+                let erasedCount = 0;
+                for (let i = strokes.length - 1; i >= 0 && erasedCount < 3; i--) {
+                    if (isPointInStroke(pos.x, pos.y, strokes[i])) {
+                        strokes.splice(i, 1);
+                        erasedCount++;
+                    }
+                }
+                if (erasedCount > 0) {
+                    redrawCanvas();
+                }
+                return;
+            }
+            
+            currentStroke.points.push(pos);
+            redrawCanvas();
+            drawStroke(currentStroke);
+        }
+        
+        function stopDrawing() {
+            if (!drawing) return;
+            drawing = false;
+            
+            if (currentTool !== 'eraser' && currentStroke.points.length > 0) {
+                strokes.push(currentStroke);
+                redoStack = [];
+            }
+        }
+        
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX || e.touches[0].clientX) - rect.left,
+                y: (e.clientY || e.touches[0].clientY) - rect.top
+            };
+        }
+        
+        function drawStroke(stroke) {
+            if (stroke.points.length < 2) return;
+            
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = stroke.opacity;
+            ctx.lineWidth = stroke.size;
+            ctx.strokeStyle = stroke.color;
+            
+            ctx.beginPath();
+            ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+            
+            for (let i = 1; i < stroke.points.length - 1; i++) {
+                const xc = (stroke.points[i].x + stroke.points[i + 1].x) / 2;
+                const yc = (stroke.points[i].y + stroke.points[i + 1].y) / 2;
+                ctx.quadraticCurveTo(stroke.points[i].x, stroke.points[i].y, xc, yc);
+            }
+            
+            if (stroke.points.length > 1) {
+                const lastPoint = stroke.points[stroke.points.length - 1];
+                const secondLastPoint = stroke.points[stroke.points.length - 2];
+                ctx.quadraticCurveTo(
+                    secondLastPoint.x,
+                    secondLastPoint.y,
+                    lastPoint.x,
+                    lastPoint.y
+                );
+            }
+            
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+        
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            strokes.forEach(stroke => drawStroke(stroke));
+        }
+        
+        function undo() {
+            if (strokes.length > 0) {
+                redoStack.push(strokes.pop());
+                redrawCanvas();
+            }
+        }
+        
+        function redo() {
+            if (redoStack.length > 0) {
+                strokes.push(redoStack.pop());
+                redrawCanvas();
+            }
+        }
+        
+        function clearCanvas() {
+            strokes = [];
+            redoStack = [];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        function closeAllMenus() {
+            document.getElementById('penPopup').classList.remove('show');
+            document.getElementById('highlighterPopup').classList.remove('show');
+        }
+        
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startDrawing(e);
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            draw(e);
+        });
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopDrawing();
+        });
+        
+        let hoverTimeout;
+        
+        function positionMenu(menuId, buttonId) {
+            const menu = document.getElementById(menuId);
+            const button = document.getElementById(buttonId);
+            const buttonRect = button.getBoundingClientRect();
+            menu.style.top = buttonRect.top + 'px';
+        }
+        
+        function showPenMenu() {
+            clearTimeout(hoverTimeout);
+            positionMenu('penPopup', 'penBtn');
+            document.getElementById('penPopup').classList.add('show');
+            document.getElementById('highlighterPopup').classList.remove('show');
+        }
+        
+        function showHighlighterMenu() {
+            clearTimeout(hoverTimeout);
+            positionMenu('highlighterPopup', 'highlighterBtn');
+            document.getElementById('highlighterPopup').classList.add('show');
+            document.getElementById('penPopup').classList.remove('show');
+        }
+        
+        function switchToPen() {
+            currentTool = 'pen';
+            document.getElementById('penBtn').classList.add('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+        }
+        
+        function switchToHighlighter() {
+            currentTool = 'highlighter';
+            document.getElementById('highlighterBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+        }
+        
+        function hideMenus() {
+            hoverTimeout = setTimeout(() => {
+                closeAllMenus();
+            }, 100);
+        }
+        
+        document.getElementById('penBtn').addEventListener('click', switchToPen);
+        
+        document.getElementById('penBtn').addEventListener('mouseenter', showPenMenu);
+        document.getElementById('penBtn').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('penPopup').addEventListener('mouseenter', () => {
+            clearTimeout(hoverTimeout);
+        });
+        document.getElementById('penPopup').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('highlighterBtn').addEventListener('click', switchToHighlighter);
+        
+        document.getElementById('highlighterBtn').addEventListener('mouseenter', showHighlighterMenu);
+        document.getElementById('highlighterBtn').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('highlighterPopup').addEventListener('mouseenter', () => {
+            clearTimeout(hoverTimeout);
+        });
+        document.getElementById('highlighterPopup').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('eraserBtn').addEventListener('click', () => {
+            currentTool = 'eraser';
+            document.getElementById('eraserBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            closeAllMenus();
+        });
+        
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const menu = btn.dataset.menu;
+                const color = btn.dataset.color;
+                
+                if (color) {
+                    if (menu === 'pen') {
+                        penColor = color;
+                        switchToPen();
+                        document.querySelectorAll('[data-menu="pen"]').forEach(b => b.classList.remove('active'));
+                    } else {
+                        highlighterColor = color;
+                        switchToHighlighter();
+                        document.querySelectorAll('[data-menu="highlighter"]').forEach(b => b.classList.remove('active'));
+                    }
+                    btn.classList.add('active');
+                }
+            });
+        });
+        
+        document.getElementById('penColorPicker').addEventListener('click', () => {
+            document.getElementById('penColorInput').click();
+        });
+        
+        document.getElementById('penColorInput').addEventListener('input', (e) => {
+            penColor = e.target.value;
+            switchToPen();
+            document.querySelectorAll('[data-menu="pen"]').forEach(b => b.classList.remove('active'));
+            document.getElementById('penColorPicker').classList.add('active');
+            document.getElementById('penColorPicker').style.background = penColor;
+        });
+        
+        document.getElementById('highlighterColorPicker').addEventListener('click', () => {
+            document.getElementById('highlighterColorInput').click();
+        });
+        
+        document.getElementById('highlighterColorInput').addEventListener('input', (e) => {
+            highlighterColor = e.target.value;
+            switchToHighlighter();
+            document.querySelectorAll('[data-menu="highlighter"]').forEach(b => b.classList.remove('active'));
+            document.getElementById('highlighterColorPicker').classList.add('active');
+            document.getElementById('highlighterColorPicker').style.background = highlighterColor;
+        });
+        
+        document.getElementById('penSizeSlider').addEventListener('input', (e) => {
+            penSize = parseInt(e.target.value);
+            switchToPen();
+            document.getElementById('penSizeValue').textContent = penSize;
+        });
+        
+        document.getElementById('highlighterSizeSlider').addEventListener('input', (e) => {
+            highlighterSize = parseInt(e.target.value);
+            switchToHighlighter();
+            document.getElementById('highlighterSizeValue').textContent = highlighterSize;
+        });
+        
+        document.getElementById('highlighterOpacitySlider').addEventListener('input', (e) => {
+            highlighterOpacity = parseInt(e.target.value) / 100;
+            switchToHighlighter();
+            document.getElementById('highlighterOpacityValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('undoBtn').addEventListener('click', undo);
+        document.getElementById('redoBtn').addEventListener('click', redo);
+        document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+        
+        document.addEventListener('click', (e) => {
+            const penPopup = document.getElementById('penPopup');
+            const highlighterPopup = document.getElementById('highlighterPopup');
+            const toolbar = document.getElementById('toolbar');
+            
+            if (!penPopup.contains(e.target) && 
+                !highlighterPopup.contains(e.target) && 
+                !toolbar.contains(e.target)) {
+                closeAllMenus();
+            }
+        });
+    </script>
+</body>
+</html>
