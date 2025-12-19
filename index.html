@@ -65,8 +65,17 @@
         }
         #canvas {
             display: block;
-            cursor: crosshair;
+            cursor: default;
             background: white;
+        }
+        #canvas.pen-cursor {
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="2" cy="2" r="2" fill="black"/></svg>') 2 2, auto;
+        }
+        #canvas.highlighter-cursor {
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="2" cy="2" r="2.5" fill="black" opacity="0.5"/></svg>') 2 2, auto;
+        }
+        #canvas.eraser-cursor {
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="2" width="8" height="8" fill="none" stroke="black" stroke-width="1.5"/></svg>') 6 6, auto;
         }
         
         .popup-menu {
@@ -727,6 +736,7 @@
             document.getElementById('penBtn').classList.add('active');
             document.getElementById('highlighterBtn').classList.remove('active');
             document.getElementById('eraserBtn').classList.remove('active');
+            canvas.className = 'pen-cursor';
         }
         
         function switchToHighlighter() {
@@ -734,6 +744,7 @@
             document.getElementById('highlighterBtn').classList.add('active');
             document.getElementById('penBtn').classList.remove('active');
             document.getElementById('eraserBtn').classList.remove('active');
+            canvas.className = 'highlighter-cursor';
         }
         
         function hideMenus() {
@@ -767,6 +778,7 @@
             document.getElementById('eraserBtn').classList.add('active');
             document.getElementById('penBtn').classList.remove('active');
             document.getElementById('highlighterBtn').classList.remove('active');
+            canvas.className = 'eraser-cursor';
             closeAllMenus();
         });
         
