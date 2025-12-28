@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paul's Drawing App</title>
+    <title>Simple Drawing App</title>
     <style>
         * {
             margin: 0;
@@ -13,22 +13,21 @@
         body {
             font-family: Arial, sans-serif;
             overflow: hidden;
-            background: #f0f0f0;
+            background: white;
         }
         #toolbar {
             position: fixed;
-            bottom: 20px;
             left: 50%;
+            bottom: 20px;
             transform: translateX(-50%);
             background: white;
-            padding: 8px 12px;
-            border-radius: 12px;
+            padding: 10px;
+            border-radius: 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             display: flex;
             flex-direction: row;
             gap: 8px;
-            align-items: center;
-            z-index: 10; 
+            z-index: 10;
         }
         .tool-btn {
             width: 40px;
@@ -60,9 +59,9 @@
             stroke-linejoin: round;
         }
         .separator {
-            height: 1px;
+            width: 1px;
             background: #ddd;
-            margin: 2px 0;
+            margin: 0 2px;
         }
         #canvas {
             display: block;
@@ -78,10 +77,49 @@
         #canvas.eraser-cursor {
             cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="2" width="8" height="8" fill="none" stroke="black" stroke-width="1.5"/></svg>') 6 6, auto;
         }
+        #canvas.text-cursor {
+            cursor: text;
+        }
+        
+        #textInput {
+            position: fixed;
+            border: 2px solid #2196F3;
+            background: transparent;
+            padding: 5px;
+            font-family: Arial, sans-serif;
+            outline: none;
+            display: none;
+            min-width: 50px;
+            resize: none;
+            overflow: hidden;
+            z-index: 50;
+            white-space: nowrap;
+        }
+        
+        .text-handle {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            background: #2196F3;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: move;
+            display: none;
+            z-index: 51;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .font-select {
+            width: 140px;
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
         
         .popup-menu {
             position: fixed;
-            left: 80px;
             background: white;
             padding: 15px;
             border-radius: 10px;
@@ -101,6 +139,10 @@
             display: flex;
         }
         #highlighterPopup {
+            display: flex;
+        }
+        
+        #textPopup {
             display: flex;
         }
         
@@ -174,6 +216,26 @@
             stroke-width: 2;
             stroke-linecap: round;
             stroke-linejoin: round;
+        }
+        
+        #notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            color: black;
+            padding: 20px 40px;
+            border-radius: 12px;
+            font-size: 18px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #notification.show {
+            opacity: 1;
         }
         .popup-section {
             display: flex;
@@ -269,6 +331,13 @@
                 <path d="M8.5 10.5l6-6 7 7-6 6"/>
             </svg>
         </button>
+        <button class="tool-btn" id="textBtn" title="Text (click to add text)">
+            <svg viewBox="0 0 24 24">
+                <polyline points="4 7 4 4 20 4 20 7"/>
+                <line x1="9" y1="20" x2="15" y2="20"/>
+                <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+        </button>
         <div class="separator"></div>
         <button class="tool-btn" id="undoBtn" title="Undo">
             <svg viewBox="0 0 24 24">
@@ -362,6 +431,11 @@
 
     <div class="save-overlay" id="saveOverlay"></div>
     
+    <div id="notification">Copied!</div>
+    
+    <textarea id="textInput"></textarea>
+    <div class="text-handle" id="textHandle"></div>
+    
     <div id="saveMenu">
         <div class="save-title">Save Your Drawing</div>
         <div class="save-options">
@@ -407,6 +481,30 @@
         </div>
     </div>
 
+    <div id="textPopup" class="popup-menu">
+        <div class="popup-section">
+            <div class="popup-title">Font</div>
+            <select class="font-select" id="fontSelect">
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
+                <option value="Impact">Impact</option>
+                <option value="Trebuchet MS">Trebuchet MS</option>
+            </select>
+        </div>
+        
+        <div class="popup-section">
+            <div class="popup-title">Size</div>
+            <div class="size-control">
+                <input type="range" id="textSizeSlider" min="10" max="100" value="20">
+                <div class="size-display"><span id="textSizeValue">20</span>px</div>
+            </div>
+        </div>
+    </div>
+
     <canvas id="canvas"></canvas>
 
     <script>
@@ -429,6 +527,21 @@
         let lastPenClick = 0;
         let lastHighlighterClick = 0;
         let smoothingBuffer = [];
+        let drawStartTime = 0;
+        let isHolding = false;
+        let straightLineTimeout = null;
+        let textInput = document.getElementById('textInput');
+        let textHandle = document.getElementById('textHandle');
+        let isEditingText = false;
+        let currentTextStroke = null;
+        let isDraggingText = false;
+        let textFont = 'Arial';
+        let textSize = 20;
+        let selectedTextIndex = -1;
+        let isDraggingFinalizedText = false;
+        let dragOffset = { x: 0, y: 0 };
+        let lastTextClick = 0;
+        let lastClickedTextIndex = -1;
         
         window.addEventListener('resize', () => {
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -438,20 +551,90 @@
         });
         
         function isPointInStroke(x, y, stroke) {
+            // Much more generous threshold for instant eraser response
+            const baseThreshold = stroke.tool === 'highlighter' ? stroke.size * 1.5 : stroke.size * 3;
+            
+            // Check against each point in the stroke
             for (let i = 0; i < stroke.points.length; i++) {
                 const p = stroke.points[i];
                 const distance = Math.sqrt((x - p.x) ** 2 + (y - p.y) ** 2);
-                const threshold = stroke.tool === 'highlighter' ? stroke.size : stroke.size + 5;
-                if (distance < threshold) {
+                if (distance < baseThreshold) {
                     return true;
                 }
             }
+            
+            // Also check between points for better coverage
+            for (let i = 0; i < stroke.points.length - 1; i++) {
+                const p1 = stroke.points[i];
+                const p2 = stroke.points[i + 1];
+                
+                // Calculate distance from point to line segment
+                const lineLength = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                if (lineLength === 0) continue;
+                
+                const t = Math.max(0, Math.min(1, ((x - p1.x) * (p2.x - p1.x) + (y - p1.y) * (p2.y - p1.y)) / (lineLength * lineLength)));
+                const projX = p1.x + t * (p2.x - p1.x);
+                const projY = p1.y + t * (p2.y - p1.y);
+                const distanceToLine = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
+                
+                if (distanceToLine < baseThreshold) {
+                    return true;
+                }
+            }
+            
             return false;
         }
         
         function startDrawing(e) {
+            if (currentTool === 'text') {
+                const pos = getMousePos(e);
+                const rect = canvas.getBoundingClientRect();
+                const now = Date.now();
+                
+                // Check if clicking on existing text
+                for (let i = strokes.length - 1; i >= 0; i--) {
+                    const stroke = strokes[i];
+                    if (stroke.tool === 'text') {
+                        ctx.font = `${stroke.size}px ${stroke.font}`;
+                        const textWidth = ctx.measureText(stroke.text).width;
+                        const textHeight = stroke.size;
+                        
+                        if (pos.x >= stroke.x && pos.x <= stroke.x + textWidth &&
+                            pos.y >= stroke.y && pos.y <= stroke.y + textHeight) {
+                            
+                            // Check for double-click
+                            if (now - lastTextClick < 500 && lastClickedTextIndex === i) {
+                                // Double-click detected - edit text
+                                editExistingText(stroke, i, rect);
+                                lastTextClick = 0;
+                                lastClickedTextIndex = -1;
+                                return;
+                            }
+                            
+                            // Single click - prepare to drag
+                            lastTextClick = now;
+                            lastClickedTextIndex = i;
+                            selectedTextIndex = i;
+                            isDraggingFinalizedText = true;
+                            dragOffset.x = pos.x - stroke.x;
+                            dragOffset.y = pos.y - stroke.y;
+                            return;
+                        }
+                    }
+                }
+                
+                // No text clicked, place new text box
+                lastTextClick = 0;
+                lastClickedTextIndex = -1;
+                placeTextBox(e, rect);
+                return;
+            }
+            
             drawing = true;
             smoothingBuffer = [];
+            drawStartTime = Date.now();
+            isHolding = false;
+            clearTimeout(straightLineTimeout);
             
             if (currentTool === 'eraser') {
                 const pos = getMousePos(e);
@@ -476,25 +659,60 @@
             const pos = getMousePos(e);
             smoothingBuffer.push(pos);
             currentStroke.points.push(pos);
+            
+            // Set timeout to detect if user is holding still
+            straightLineTimeout = setTimeout(() => {
+                if (drawing && currentStroke.points.length > 1) {
+                    isHolding = true;
+                    convertToStraightLine();
+                }
+            }, 400);
         }
         
         function draw(e) {
-            if (!drawing) return;
+            if (!drawing && !isDraggingFinalizedText) return;
             
             const pos = getMousePos(e);
             
+            // Handle dragging finalized text
+            if (isDraggingFinalizedText && selectedTextIndex >= 0) {
+                strokes[selectedTextIndex].x = pos.x - dragOffset.x;
+                strokes[selectedTextIndex].y = pos.y - dragOffset.y;
+                redrawCanvas();
+                return;
+            }
+            
+            // Reset timer if user is still moving
+            if (!isHolding) {
+                clearTimeout(straightLineTimeout);
+                straightLineTimeout = setTimeout(() => {
+                    if (drawing && currentStroke.points.length > 1) {
+                        isHolding = true;
+                        convertToStraightLine();
+                    }
+                }, 400);
+            }
+            
             if (currentTool === 'eraser') {
-                // Check multiple strokes per frame for faster erasing
-                let erasedCount = 0;
-                for (let i = strokes.length - 1; i >= 0 && erasedCount < 3; i--) {
+                // More aggressive erasing - check all strokes every frame
+                let anyErased = false;
+                for (let i = strokes.length - 1; i >= 0; i--) {
                     if (isPointInStroke(pos.x, pos.y, strokes[i])) {
                         strokes.splice(i, 1);
-                        erasedCount++;
+                        anyErased = true;
                     }
                 }
-                if (erasedCount > 0) {
+                if (anyErased) {
                     redrawCanvas();
                 }
+                return;
+            }
+            
+            if (isHolding) {
+                // Update the endpoint of the straight line
+                currentStroke.points[1] = pos;
+                redrawCanvas();
+                drawStroke(currentStroke);
                 return;
             }
             
@@ -527,13 +745,23 @@
         }
         
         function stopDrawing() {
+            if (isDraggingFinalizedText) {
+                // Only stop dragging if mouse actually moved
+                isDraggingFinalizedText = false;
+                selectedTextIndex = -1;
+                return;
+            }
+            
             if (!drawing) return;
             drawing = false;
+            clearTimeout(straightLineTimeout);
             
             if (currentTool !== 'eraser' && currentStroke.points.length > 0) {
                 strokes.push(currentStroke);
                 redoStack = [];
             }
+            
+            isHolding = false;
         }
         
         function getMousePos(e) {
@@ -544,7 +772,162 @@
             };
         }
         
+        function convertToStraightLine() {
+            if (currentStroke.points.length < 2) return;
+            
+            const startPoint = currentStroke.points[0];
+            const endPoint = currentStroke.points[currentStroke.points.length - 1];
+            
+            // Calculate distance
+            const distance = Math.sqrt(
+                Math.pow(endPoint.x - startPoint.x, 2) + 
+                Math.pow(endPoint.y - startPoint.y, 2)
+            );
+            
+            // Replace all points with just start and end for a perfect straight line
+            currentStroke.points = [startPoint, endPoint];
+            
+            redrawCanvas();
+            drawStroke(currentStroke);
+        }
+        
+        function placeTextBox(e, rect) {
+            const pos = getMousePos(e);
+            
+            textInput.style.left = (rect.left + pos.x) + 'px';
+            textInput.style.top = (rect.top + pos.y) + 'px';
+            textInput.style.display = 'block';
+            textInput.style.fontSize = textSize + 'px';
+            textInput.style.fontFamily = textFont;
+            textInput.style.color = penColor;
+            textInput.style.width = 'auto';
+            textInput.style.height = 'auto';
+            textInput.value = '';
+            isEditingText = true;
+            currentTextStroke = null;
+            
+            // Position handle
+            textHandle.style.display = 'block';
+            textHandle.style.left = (rect.left + pos.x - 10) + 'px';
+            textHandle.style.top = (rect.top + pos.y - 10) + 'px';
+            
+            setTimeout(() => {
+                textInput.focus();
+            }, 10);
+        }
+        
+        function editExistingText(stroke, index, rect) {
+            textInput.style.left = (rect.left + stroke.x) + 'px';
+            textInput.style.top = (rect.top + stroke.y) + 'px';
+            textInput.style.display = 'block';
+            textInput.style.fontSize = stroke.size + 'px';
+            textInput.style.fontFamily = stroke.font;
+            textInput.style.color = stroke.color;
+            textInput.value = stroke.text;
+            isEditingText = true;
+            currentTextStroke = { stroke, index };
+            
+            // Position handle
+            textHandle.style.display = 'block';
+            textHandle.style.left = (rect.left + stroke.x - 10) + 'px';
+            textHandle.style.top = (rect.top + stroke.y - 10) + 'px';
+            
+            setTimeout(() => {
+                textInput.focus();
+                textInput.select();
+            }, 10);
+        }
+        
+        function finalizeText() {
+            if (!isEditingText || !textInput.value.trim()) {
+                textInput.style.display = 'none';
+                textHandle.style.display = 'none';
+                isEditingText = false;
+                currentTextStroke = null;
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = parseInt(textInput.style.left) - rect.left;
+            const y = parseInt(textInput.style.top) - rect.top;
+            
+            if (currentTextStroke) {
+                // Update existing text
+                strokes[currentTextStroke.index] = {
+                    tool: 'text',
+                    color: textInput.style.color,
+                    size: parseInt(textInput.style.fontSize),
+                    font: textInput.style.fontFamily,
+                    text: textInput.value,
+                    x: x,
+                    y: y
+                };
+            } else {
+                // Create new text
+                strokes.push({
+                    tool: 'text',
+                    color: penColor,
+                    size: textSize,
+                    font: textFont,
+                    text: textInput.value,
+                    x: x,
+                    y: y
+                });
+                redoStack = [];
+            }
+            
+            redrawCanvas();
+            textInput.style.display = 'none';
+            textHandle.style.display = 'none';
+            textInput.value = '';
+            isEditingText = false;
+            currentTextStroke = null;
+        }
+        
+        // Text dragging
+        textHandle.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            isDraggingText = true;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDraggingText && isEditingText) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - 10;
+                const y = e.clientY - 10;
+                
+                textHandle.style.left = x + 'px';
+                textHandle.style.top = y + 'px';
+                textInput.style.left = (x + 10) + 'px';
+                textInput.style.top = (y + 10) + 'px';
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDraggingText = false;
+        });
+        
+        textInput.addEventListener('blur', finalizeText);
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                finalizeText();
+            } else if (e.key === 'Escape') {
+                textInput.style.display = 'none';
+                textInput.value = '';
+                isEditingText = false;
+            }
+        });
+        
         function drawStroke(stroke) {
+            if (stroke.tool === 'text') {
+                ctx.font = `${stroke.size}px ${stroke.font}`;
+                ctx.fillStyle = stroke.color;
+                ctx.textBaseline = 'top';
+                ctx.fillText(stroke.text, stroke.x, stroke.y);
+                return;
+            }
+            
             if (stroke.points.length < 2) return;
             
             ctx.lineCap = 'round';
@@ -668,12 +1051,20 @@
                 navigator.clipboard.write([
                     new ClipboardItem({ 'image/png': blob })
                 ]).then(() => {
-                    alert('Drawing copied to clipboard!');
+                    showNotification();
                     closeSaveMenu();
                 }).catch(err => {
                     alert('Failed to copy to clipboard');
                 });
             });
+        }
+        
+        function showNotification() {
+            const notification = document.getElementById('notification');
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 1000);
         }
         
         function showSaveMenu() {
@@ -689,6 +1080,7 @@
         function closeAllMenus() {
             document.getElementById('penPopup').classList.remove('show');
             document.getElementById('highlighterPopup').classList.remove('show');
+            document.getElementById('textPopup').classList.remove('show');
         }
         
         canvas.addEventListener('mousedown', startDrawing);
@@ -715,7 +1107,15 @@
             const menu = document.getElementById(menuId);
             const button = document.getElementById(buttonId);
             const buttonRect = button.getBoundingClientRect();
-            menu.style.top = buttonRect.top + 'px';
+            const menuWidth = menu.offsetWidth;
+            
+            // Center menu horizontally with the button
+            const centerOffset = buttonRect.left + (buttonRect.width / 2) - (menuWidth / 2);
+            
+            // Position above the toolbar
+            menu.style.left = centerOffset + 'px';
+            menu.style.bottom = (window.innerHeight - buttonRect.top + 10) + 'px';
+            menu.style.top = 'auto';
         }
         
         function showPenMenu() {
@@ -737,6 +1137,7 @@
             document.getElementById('penBtn').classList.add('active');
             document.getElementById('highlighterBtn').classList.remove('active');
             document.getElementById('eraserBtn').classList.remove('active');
+            document.getElementById('textBtn').classList.remove('active');
             canvas.className = 'pen-cursor';
         }
         
@@ -745,7 +1146,25 @@
             document.getElementById('highlighterBtn').classList.add('active');
             document.getElementById('penBtn').classList.remove('active');
             document.getElementById('eraserBtn').classList.remove('active');
+            document.getElementById('textBtn').classList.remove('active');
             canvas.className = 'highlighter-cursor';
+        }
+        
+        function showTextMenu() {
+            clearTimeout(hoverTimeout);
+            positionMenu('textPopup', 'textBtn');
+            document.getElementById('textPopup').classList.add('show');
+            document.getElementById('penPopup').classList.remove('show');
+            document.getElementById('highlighterPopup').classList.remove('show');
+        }
+        
+        function switchToText() {
+            currentTool = 'text';
+            document.getElementById('textBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+            canvas.className = 'text-cursor';
         }
         
         function hideMenus() {
@@ -779,8 +1198,44 @@
             document.getElementById('eraserBtn').classList.add('active');
             document.getElementById('penBtn').classList.remove('active');
             document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('textBtn').classList.remove('active');
             canvas.className = 'eraser-cursor';
             closeAllMenus();
+        });
+        
+        document.getElementById('textBtn').addEventListener('click', () => {
+            currentTool = 'text';
+            document.getElementById('textBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+            canvas.className = 'text-cursor';
+            closeAllMenus();
+        });
+        
+        document.getElementById('textBtn').addEventListener('mouseenter', showTextMenu);
+        document.getElementById('textBtn').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('textPopup').addEventListener('mouseenter', () => {
+            clearTimeout(hoverTimeout);
+        });
+        document.getElementById('textPopup').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('fontSelect').addEventListener('change', (e) => {
+            textFont = e.target.value;
+            switchToText();
+            if (isEditingText) {
+                textInput.style.fontFamily = textFont;
+            }
+        });
+        
+        document.getElementById('textSizeSlider').addEventListener('input', (e) => {
+            textSize = parseInt(e.target.value);
+            switchToText();
+            document.getElementById('textSizeValue').textContent = textSize;
+            if (isEditingText) {
+                textInput.style.fontSize = textSize + 'px';
+            }
         });
         
         document.querySelectorAll('.color-btn').forEach(btn => {
@@ -859,12 +1314,30 @@
         document.addEventListener('click', (e) => {
             const penPopup = document.getElementById('penPopup');
             const highlighterPopup = document.getElementById('highlighterPopup');
+            const textPopup = document.getElementById('textPopup');
             const toolbar = document.getElementById('toolbar');
             
             if (!penPopup.contains(e.target) && 
                 !highlighterPopup.contains(e.target) && 
+                !textPopup.contains(e.target) &&
                 !toolbar.contains(e.target)) {
                 closeAllMenus();
+            }
+        });
+        
+        // Keyboard shortcuts for undo/redo
+        document.addEventListener('keydown', (e) => {
+            // Check for Cmd (Mac) or Ctrl (Windows/Linux)
+            if (e.metaKey || e.ctrlKey) {
+                if (e.shiftKey && e.key.toLowerCase() === 'z') {
+                    // Cmd/Ctrl + Shift + Z = Redo
+                    e.preventDefault();
+                    redo();
+                } else if (e.key.toLowerCase() === 'z') {
+                    // Cmd/Ctrl + Z = Undo
+                    e.preventDefault();
+                    undo();
+                }
             }
         });
     </script>
