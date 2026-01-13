@@ -118,6 +118,44 @@
             cursor: pointer;
         }
         
+        .eraser-mode-btn {
+            padding: 12px 20px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .eraser-mode-btn:hover {
+            background: #f5f5f5;
+            border-color: #2196F3;
+        }
+        .eraser-mode-btn.active {
+            background: #e3f2fd;
+            border-color: #2196F3;
+        }
+        .eraser-mode-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: #333;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .eraser-mode-label {
+            font-size: 14px;
+            color: #333;
+        }
+        .eraser-mode-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
         .popup-menu {
             position: fixed;
             background: white;
@@ -143,6 +181,10 @@
         }
         
         #textPopup {
+            display: flex;
+        }
+        
+        #eraserPopup {
             display: flex;
         }
         
@@ -481,6 +523,58 @@
         </div>
     </div>
 
+    <div id="eraserPopup" class="popup-menu">
+        <div class="popup-section">
+            <div class="eraser-mode-grid">
+                <button class="eraser-mode-btn active" id="strokeEraserBtn">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 12 L12 3 L21 12 L12 21 Z"/>
+                        <line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <span class="eraser-mode-label">Stroke</span>
+                </button>
+                <button class="eraser-mode-btn" id="pixelEraserBtn">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="8" cy="8" r="1.5"/>
+                        <circle cx="12" cy="8" r="1.5"/>
+                        <circle cx="16" cy="8" r="1.5"/>
+                        <circle cx="8" cy="12" r="1.5"/>
+                        <circle cx="12" cy="12" r="1.5"/>
+                        <circle cx="16" cy="12" r="1.5"/>
+                        <circle cx="8" cy="16" r="1.5"/>
+                        <circle cx="12" cy="16" r="1.5"/>
+                        <circle cx="16" cy="16" r="1.5"/>
+                    </svg>
+                    <span class="eraser-mode-label">Pixel</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="textPopup" class="popup-menu">
+        <div class="popup-section">
+            <div class="popup-title">Font</div>
+            <select class="font-select" id="fontSelect">
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
+                <option value="Impact">Impact</option>
+                <option value="Trebuchet MS">Trebuchet MS</option>
+            </select>
+        </div>
+        
+        <div class="popup-section">
+            <div class="popup-title">Size</div>
+            <div class="size-control">
+                <input type="range" id="textSizeSlider" min="10" max="100" value="20">
+                <div class="size-display"><span id="textSizeValue">20</span>px</div>
+            </div>
+        </div>
+    </div>
+
     <div id="textPopup" class="popup-menu">
         <div class="popup-section">
             <div class="popup-title">Font</div>
@@ -542,6 +636,9 @@
         let dragOffset = { x: 0, y: 0 };
         let lastTextClick = 0;
         let lastClickedTextIndex = -1;
+        let eraserMode = 'stroke'; // 'stroke' or 'pixel'
+        let lastEraserPos = null; // Track last eraser position for smooth erasing
+        let currentEraseStroke = null; // Current pixel erase stroke being drawn
         
         window.addEventListener('resize', () => {
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -637,14 +734,35 @@
             clearTimeout(straightLineTimeout);
             
             if (currentTool === 'eraser') {
-                const pos = getMousePos(e);
-                for (let i = strokes.length - 1; i >= 0; i--) {
-                    if (isPointInStroke(pos.x, pos.y, strokes[i])) {
-                        redoStack = [];
-                        strokes.splice(i, 1);
-                        redrawCanvas();
-                        break;
+                if (eraserMode === 'stroke') {
+                    const pos = getMousePos(e);
+                    for (let i = strokes.length - 1; i >= 0; i--) {
+                        if (isPointInStroke(pos.x, pos.y, strokes[i])) {
+                            redoStack = [];
+                            strokes.splice(i, 1);
+                            redrawCanvas();
+                            break;
+                        }
                     }
+                } else {
+                    // Pixel eraser - start a new erase stroke
+                    const pos = getMousePos(e);
+                    drawing = true;
+                    lastEraserPos = pos;
+                    currentEraseStroke = {
+                        tool: 'pixelErase',
+                        points: [pos]
+                    };
+                    
+                    // Draw the initial erase point
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = 20;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalCompositeOperation = 'source-over';
                 }
                 return;
             }
@@ -694,16 +812,40 @@
             }
             
             if (currentTool === 'eraser') {
-                // More aggressive erasing - check all strokes every frame
-                let anyErased = false;
-                for (let i = strokes.length - 1; i >= 0; i--) {
-                    if (isPointInStroke(pos.x, pos.y, strokes[i])) {
-                        strokes.splice(i, 1);
-                        anyErased = true;
+                if (eraserMode === 'stroke') {
+                    // Stroke eraser - erase entire strokes
+                    let anyErased = false;
+                    for (let i = strokes.length - 1; i >= 0; i--) {
+                        if (isPointInStroke(pos.x, pos.y, strokes[i])) {
+                            strokes.splice(i, 1);
+                            anyErased = true;
+                        }
                     }
-                }
-                if (anyErased) {
-                    redrawCanvas();
+                    if (anyErased) {
+                        redoStack = [];
+                        redrawCanvas();
+                    }
+                } else {
+                    // Pixel eraser - add points to erase stroke
+                    if (currentEraseStroke) {
+                        currentEraseStroke.points.push(pos);
+                    }
+                    
+                    // Draw continuous eraser line for smooth erasing
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = 20;
+                    
+                    if (lastEraserPos) {
+                        ctx.beginPath();
+                        ctx.moveTo(lastEraserPos.x, lastEraserPos.y);
+                        ctx.lineTo(pos.x, pos.y);
+                        ctx.stroke();
+                    }
+                    
+                    lastEraserPos = pos;
+                    ctx.globalCompositeOperation = 'source-over';
                 }
                 return;
             }
@@ -746,7 +888,6 @@
         
         function stopDrawing() {
             if (isDraggingFinalizedText) {
-                // Only stop dragging if mouse actually moved
                 isDraggingFinalizedText = false;
                 selectedTextIndex = -1;
                 return;
@@ -755,6 +896,15 @@
             if (!drawing) return;
             drawing = false;
             clearTimeout(straightLineTimeout);
+            
+            // Save pixel erase stroke
+            if (currentTool === 'eraser' && eraserMode === 'pixel' && currentEraseStroke) {
+                strokes.push(currentEraseStroke);
+                redoStack = [];
+                currentEraseStroke = null;
+                lastEraserPos = null;
+                return;
+            }
             
             if (currentTool !== 'eraser' && currentStroke.points.length > 0) {
                 strokes.push(currentStroke);
@@ -928,6 +1078,26 @@
                 return;
             }
             
+            if (stroke.tool === 'pixelErase') {
+                // Draw erase stroke
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 20;
+                
+                if (stroke.points.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+                    for (let i = 1; i < stroke.points.length; i++) {
+                        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+                    }
+                    ctx.stroke();
+                }
+                
+                ctx.globalCompositeOperation = 'source-over';
+                return;
+            }
+            
             if (stroke.points.length < 2) return;
             
             ctx.lineCap = 'round';
@@ -1081,6 +1251,7 @@
             document.getElementById('penPopup').classList.remove('show');
             document.getElementById('highlighterPopup').classList.remove('show');
             document.getElementById('textPopup').classList.remove('show');
+            document.getElementById('eraserPopup').classList.remove('show');
         }
         
         canvas.addEventListener('mousedown', startDrawing);
@@ -1167,6 +1338,42 @@
             canvas.className = 'text-cursor';
         }
         
+        function switchToEraser() {
+            currentTool = 'eraser';
+            document.getElementById('eraserBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('textBtn').classList.remove('active');
+            canvas.className = 'eraser-cursor';
+        }
+        
+        function showEraserMenu() {
+            clearTimeout(hoverTimeout);
+            positionMenu('eraserPopup', 'eraserBtn');
+            document.getElementById('eraserPopup').classList.add('show');
+            document.getElementById('penPopup').classList.remove('show');
+            document.getElementById('highlighterPopup').classList.remove('show');
+            document.getElementById('textPopup').classList.remove('show');
+        }
+        
+        function switchToText() {
+            currentTool = 'text';
+            document.getElementById('textBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+            canvas.className = 'text-cursor';
+        }
+        
+        function switchToEraser() {
+            currentTool = 'eraser';
+            document.getElementById('eraserBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+            document.getElementById('highlighterBtn').classList.remove('active');
+            document.getElementById('textBtn').classList.remove('active');
+            canvas.className = 'eraser-cursor';
+        }
+        
         function hideMenus() {
             hoverTimeout = setTimeout(() => {
                 closeAllMenus();
@@ -1193,14 +1400,28 @@
         });
         document.getElementById('highlighterPopup').addEventListener('mouseleave', hideMenus);
         
-        document.getElementById('eraserBtn').addEventListener('click', () => {
-            currentTool = 'eraser';
-            document.getElementById('eraserBtn').classList.add('active');
-            document.getElementById('penBtn').classList.remove('active');
-            document.getElementById('highlighterBtn').classList.remove('active');
-            document.getElementById('textBtn').classList.remove('active');
-            canvas.className = 'eraser-cursor';
-            closeAllMenus();
+        document.getElementById('eraserBtn').addEventListener('click', switchToEraser);
+        
+        document.getElementById('eraserBtn').addEventListener('mouseenter', showEraserMenu);
+        document.getElementById('eraserBtn').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('eraserPopup').addEventListener('mouseenter', () => {
+            clearTimeout(hoverTimeout);
+        });
+        document.getElementById('eraserPopup').addEventListener('mouseleave', hideMenus);
+        
+        document.getElementById('strokeEraserBtn').addEventListener('click', () => {
+            eraserMode = 'stroke';
+            switchToEraser();
+            document.getElementById('strokeEraserBtn').classList.add('active');
+            document.getElementById('pixelEraserBtn').classList.remove('active');
+        });
+        
+        document.getElementById('pixelEraserBtn').addEventListener('click', () => {
+            eraserMode = 'pixel';
+            switchToEraser();
+            document.getElementById('pixelEraserBtn').classList.add('active');
+            document.getElementById('strokeEraserBtn').classList.remove('active');
         });
         
         document.getElementById('textBtn').addEventListener('click', () => {
@@ -1315,11 +1536,13 @@
             const penPopup = document.getElementById('penPopup');
             const highlighterPopup = document.getElementById('highlighterPopup');
             const textPopup = document.getElementById('textPopup');
+            const eraserPopup = document.getElementById('eraserPopup');
             const toolbar = document.getElementById('toolbar');
             
             if (!penPopup.contains(e.target) && 
                 !highlighterPopup.contains(e.target) && 
                 !textPopup.contains(e.target) &&
+                !eraserPopup.contains(e.target) &&
                 !toolbar.contains(e.target)) {
                 closeAllMenus();
             }
